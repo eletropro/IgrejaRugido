@@ -3,7 +3,7 @@ import {
   Home, Book, MessageSquare, PenTool, Users, Calendar, 
   Video, GraduationCap, Heart, User, Settings, Send, 
   Plus, ThumbsUp, Share2, MapPin, LogIn, LogOut, Search,
-  Award, Menu, X, ChevronRight, Play, Trash2, Camera
+  Menu, X, ChevronRight, Play, Trash2, Camera
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
@@ -247,8 +247,6 @@ export default function App() {
               email: firebaseUser.email || '',
               photoURL: firebaseUser.photoURL || '',
               role: firebaseUser.email === 'duhgostozo@gmail.com' ? 'admin' : 'member',
-              points: 0,
-              level: 1,
               createdAt: new Date().toISOString()
             };
             setDoc(doc(db, 'users', firebaseUser.uid), newProfile);
@@ -349,20 +347,6 @@ export default function App() {
     }
   };
 
-  const awardXP = async (amount: number) => {
-    if (!profile || !user) return;
-    const newPoints = profile.points + amount;
-    const newLevel = Math.floor(newPoints / 100) + 1;
-    
-    const updates: Partial<UserProfile> = {
-      points: newPoints,
-      level: newLevel
-    };
-
-    await updateDoc(doc(db, 'users', user.uid), updates);
-    setProfile(prev => prev ? { ...prev, ...updates } : null);
-  };
-
   if (loading) {
     return (
       <div className="min-h-screen bg-black flex items-center justify-center">
@@ -410,7 +394,7 @@ export default function App() {
             <div className="flex items-center gap-3">
               <Lion className="w-8 h-8" />
               <div>
-                <p className="font-bold text-sm">Instalar Rugido Profético</p>
+                <p className="font-bold text-sm">Instalar Igreja Profética Rugido</p>
                 <p className="text-xs opacity-80">Acesse mais rápido direto da sua tela inicial</p>
               </div>
             </div>
@@ -438,7 +422,7 @@ export default function App() {
           <div className="w-8 h-8 bg-[#D4AF37] rounded-lg flex items-center justify-center">
             <Lion className="text-black w-5 h-5" />
           </div>
-          <span className="font-bold text-lg tracking-tight">Rugido Profético</span>
+          <span className="font-bold text-lg tracking-tight">Igreja Profética Rugido</span>
         </div>
         <button onClick={() => setIsMenuOpen(!isMenuOpen)}>
           {isMenuOpen ? <X /> : <Menu />}
@@ -452,7 +436,7 @@ export default function App() {
             <div className="w-10 h-10 bg-[#D4AF37] rounded-xl flex items-center justify-center shadow-[0_0_15px_rgba(212,175,55,0.3)]">
               <Lion className="text-black w-6 h-6" />
             </div>
-            <span className="font-bold text-xl tracking-tighter">RUGIDO</span>
+            <span className="font-bold text-xl tracking-tighter">IGREJA PROFÉTICA RUGIDO</span>
           </div>
 
           <nav className="flex-1 space-y-1">
@@ -478,7 +462,7 @@ export default function App() {
               <img src={profile?.photoURL} alt="" className="w-10 h-10 rounded-full border border-zinc-700" />
               <div className="flex-1 min-w-0">
                 <p className="text-sm font-medium truncate">{profile?.displayName}</p>
-                <p className="text-xs text-zinc-500 uppercase tracking-widest">Nível {profile?.level}</p>
+                <p className="text-xs text-zinc-500 uppercase tracking-widest">{profile?.role}</p>
               </div>
             </div>
             <Button variant="ghost" className="w-full justify-start text-red-400 hover:text-red-300 hover:bg-red-400/10" onClick={logout}>
@@ -525,11 +509,11 @@ export default function App() {
               exit={{ opacity: 0, y: -10 }}
               transition={{ duration: 0.2 }}
             >
-              {activeTab === 'home' && <HomeView profile={profile} awardXP={awardXP} churchConfig={churchConfig} />}
-              {activeTab === 'bible' && <BibleView profile={profile} awardXP={awardXP} />}
-              {activeTab === 'ai' && <AIBibleView awardXP={awardXP} />}
+              {activeTab === 'home' && <HomeView profile={profile} churchConfig={churchConfig} />}
+              {activeTab === 'bible' && <BibleView profile={profile} />}
+              {activeTab === 'ai' && <AIBibleView />}
               {activeTab === 'sermons' && <SermonGenView />}
-              {activeTab === 'community' && <CommunityView profile={profile} awardXP={awardXP} />}
+              {activeTab === 'community' && <CommunityView profile={profile} />}
               {activeTab === 'events' && <EventsView profile={profile} />}
               {activeTab === 'live' && <LiveView churchConfig={churchConfig} />}
               {activeTab === 'discipleship' && <DiscipleshipView />}
@@ -558,11 +542,13 @@ function LoginScreen() {
     } catch (err: any) {
       console.error(err);
       if (err.code === 'auth/popup-blocked') {
-        setError('O pop-up de login foi bloqueado. Clique no ícone de cadeado ou nas configurações do seu navegador e permita "Pop-ups e redirecionamentos".');
+        setError('O pop-up de login foi bloqueado. Por favor, permita pop-ups no seu navegador para entrar.');
       } else if (err.code === 'auth/cancelled-popup-request') {
         setError('O login foi cancelado.');
+      } else if (err.code === 'auth/unauthorized-domain') {
+        setError('Este domínio ainda não foi autorizado. Por favor, aguarde alguns segundos e tente novamente (o Firebase está processando a autorização).');
       } else {
-        setError('Erro ao conectar. Verifique sua internet ou tente recarregar a página.');
+        setError('Erro ao conectar. Tente recarregar a página ou verifique se você está logado no Google.');
       }
     } finally {
       setIsLoggingIn(false);
@@ -581,12 +567,12 @@ function LoginScreen() {
             <Lion className="text-black w-12 h-12" />
           </div>
         </motion.div>
-        <h1 className="text-4xl font-bold mb-2 tracking-tighter">IGREJA PROFÉTICA</h1>
+        <h1 className="text-3xl font-bold mb-2 tracking-tighter">IGREJA PROFÉTICA</h1>
         <h2 className="text-[#D4AF37] text-2xl font-light mb-8 tracking-[0.2em]">RUGIDO</h2>
         
         <div className="bg-zinc-900/50 border border-zinc-800 p-6 rounded-2xl mb-8">
           <p className="text-zinc-300 text-sm mb-4">
-            O **cadastro é automático**! Basta entrar com sua conta Google para criar seu perfil e começar a ganhar XP.
+            Faça login com sua conta Google para acessar o portal.
           </p>
           
           {error && (
@@ -637,7 +623,7 @@ function LoginScreen() {
   );
 }
 
-function HomeView({ profile, awardXP, churchConfig }: { profile: UserProfile | null, awardXP: (amount: number) => Promise<void>, churchConfig: ChurchConfig | null }) {
+function HomeView({ profile, churchConfig }: { profile: UserProfile | null, churchConfig: ChurchConfig | null }) {
   const [prayer, setPrayer] = useState('');
 
   const handlePrayer = async () => {
@@ -652,7 +638,6 @@ function HomeView({ profile, awardXP, churchConfig }: { profile: UserProfile | n
         createdAt: serverTimestamp()
       });
       setPrayer('');
-      await awardXP(10);
     } catch (error) {
       handleFirestoreError(error, OperationType.CREATE, 'prayers');
     }
@@ -676,10 +661,10 @@ function HomeView({ profile, awardXP, churchConfig }: { profile: UserProfile | n
         )}
       </header>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+      <div className="grid grid-cols-1 gap-6">
         <Card className="bg-gradient-to-br from-zinc-900 to-black border-[#D4AF37]/20 overflow-hidden p-0">
           {churchConfig?.dailyMessage?.imageUrl && (
-            <div className="h-32 overflow-hidden">
+            <div className="h-48 overflow-hidden">
               <img src={churchConfig.dailyMessage.imageUrl} alt="" className="w-full h-full object-cover opacity-60" />
             </div>
           )}
@@ -692,20 +677,6 @@ function HomeView({ profile, awardXP, churchConfig }: { profile: UserProfile | n
               "{churchConfig?.dailyMessage?.text || "O Senhor é o meu pastor, nada me faltará."}"
             </p>
             <p className="text-sm text-zinc-500">— {churchConfig?.dailyMessage?.author || "Salmos 23:1"}</p>
-          </div>
-        </Card>
-
-        <Card className="bg-zinc-900 border-zinc-800">
-          <div className="flex items-center gap-2 text-emerald-400 mb-4">
-            <Award className="w-5 h-5" />
-            <span className="text-xs font-bold uppercase tracking-widest">Progresso Espiritual</span>
-          </div>
-          <div className="flex items-end justify-between mb-2">
-            <span className="text-2xl font-bold">Nível {profile?.level}</span>
-            <span className="text-zinc-500 text-sm">{profile?.points} XP</span>
-          </div>
-          <div className="w-full bg-zinc-800 h-2 rounded-full overflow-hidden">
-            <div className="bg-[#D4AF37] h-full" style={{ width: `${(profile?.points || 0) % 100}%` }} />
           </div>
         </Card>
       </div>
@@ -755,7 +726,7 @@ function HomeView({ profile, awardXP, churchConfig }: { profile: UserProfile | n
   );
 }
 
-function BibleView({ profile, awardXP }: { profile: UserProfile | null, awardXP: (amount: number) => Promise<void> }) {
+function BibleView({ profile }: { profile: UserProfile | null }) {
   const [selectedBook, setSelectedBook] = useState<string | null>(profile?.lastRead?.book || null);
   const [selectedChapter, setSelectedChapter] = useState<number | null>(profile?.lastRead?.chapter || null);
   const [content, setContent] = useState<string>('');
@@ -802,7 +773,6 @@ function BibleView({ profile, awardXP }: { profile: UserProfile | null, awardXP:
       const data = await response.json();
       if (data.text) {
         setContent(data.text);
-        await awardXP(5);
       } else {
         const fallback = await fetch(`https://bible-api.com/${book}+${chapter}`);
         const fbData = await fallback.json();
@@ -1334,7 +1304,7 @@ function AdminView({ churchConfig, setChurchConfig }: { churchConfig: ChurchConf
     </div>
   );
 }
-function AIBibleView({ awardXP }: { awardXP: (amount: number) => Promise<void> }) {
+function AIBibleView() {
   const [input, setInput] = useState('');
   const [messages, setMessages] = useState<{ role: 'user' | 'ai'; content: string }[]>([]);
   const [loading, setLoading] = useState(false);
@@ -1483,7 +1453,7 @@ function SermonGenView() {
   );
 }
 
-function CommunityView({ profile, awardXP }: { profile: UserProfile | null, awardXP: (amount: number) => Promise<void> }) {
+function CommunityView({ profile }: { profile: UserProfile | null }) {
   const [posts, setPosts] = useState<Post[]>([]);
   const [prayers, setPrayers] = useState<PrayerRequest[]>([]);
   const [activeSubTab, setActiveSubTab] = useState<'feed' | 'prayers'>('feed');
@@ -1527,7 +1497,6 @@ function CommunityView({ profile, awardXP }: { profile: UserProfile | null, awar
       setNewPost('');
       setImageUrl('');
       setShowImageInput(false);
-      await awardXP(5);
     } catch (error) {
       handleFirestoreError(error, OperationType.CREATE, 'posts');
     }
@@ -1548,7 +1517,6 @@ function CommunityView({ profile, awardXP }: { profile: UserProfile | null, awar
       await updateDoc(doc(db, 'prayers', prayerId), {
         intercessionCount: increment(1)
       });
-      await awardXP(5);
     } catch (error) {
       handleFirestoreError(error, OperationType.UPDATE, `prayers/${prayerId}`);
     }
@@ -2049,10 +2017,8 @@ function ProfileView({ profile }: { profile: UserProfile | null }) {
         <p className="text-zinc-500 mt-2">Membro desde {profile?.createdAt ? format(new Date(profile.createdAt), "MMMM 'de' yyyy", { locale: ptBR }) : ''}</p>
       </div>
 
-      <div className="grid grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 gap-4">
         {[
-          { label: 'Pontos', value: profile?.points, icon: Award },
-          { label: 'Nível', value: profile?.level, icon: Lion },
           { label: 'Testemunhos', value: 12, icon: MessageSquare },
         ].map((stat, i) => (
           <Card key={i} className="text-center p-4">
@@ -2063,23 +2029,7 @@ function ProfileView({ profile }: { profile: UserProfile | null }) {
         ))}
       </div>
 
-      <section>
-        <h3 className="text-xl font-bold mb-4">Minhas Conquistas</h3>
-        <div className="flex gap-4 overflow-x-auto pb-4 scrollbar-hide">
-          {[
-            { name: 'Primeiro Passo', desc: 'Completou o perfil', icon: '🌱' },
-            { name: 'Leitor Assíduo', desc: '7 dias lendo a Bíblia', icon: '📖' },
-            { name: 'Doador Alegre', desc: 'Primeira oferta realizada', icon: '❤️' },
-            { name: 'Discípulo', desc: 'Concluiu o primeiro curso', icon: '🎓' },
-          ].map((badge, i) => (
-            <div key={i} className="min-w-[120px] p-4 bg-zinc-900 rounded-2xl border border-zinc-800 text-center">
-              <div className="text-3xl mb-2">{badge.icon}</div>
-              <p className="text-xs font-bold">{badge.name}</p>
-              <p className="text-[10px] text-zinc-500 mt-1">{badge.desc}</p>
-            </div>
-          ))}
-        </div>
-      </section>
+      {/* Conquistas removed */}
     </div>
   );
 }

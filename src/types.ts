@@ -6,8 +6,6 @@ export interface UserProfile {
   email: string;
   photoURL: string;
   role: UserRole;
-  points: number;
-  level: number;
   createdAt: string;
   lastRead?: {
     book: string;
