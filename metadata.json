@@ -1,0 +1,9 @@
+{
+  "name": "Igreja Profética Rugido",
+  "description": "Plataforma digital cristã completa com Bíblia, IA Bíblica, Discipulado e Comunidade.",
+  "requestFramePermissions": [
+    "camera",
+    "microphone",
+    "geolocation"
+  ]
+}

@@ -1,0 +1,148 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "User profile information",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "displayName": { "type": "string" },
+        "email": { "type": "string" },
+        "photoURL": { "type": "string" },
+        "role": { "type": "string", "enum": ["visitor", "member", "leader", "pastor", "admin"] },
+        "points": { "type": "integer" },
+        "level": { "type": "integer" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "email", "role"]
+    },
+    "Post": {
+      "title": "Post",
+      "description": "Community feed post",
+      "type": "object",
+      "properties": {
+        "authorId": { "type": "string" },
+        "authorName": { "type": "string" },
+        "authorPhoto": { "type": "string" },
+        "content": { "type": "string" },
+        "type": { "type": "string", "enum": ["text", "image", "testimony", "verse"] },
+        "likes": { "type": "integer" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["authorId", "content", "createdAt"]
+    },
+    "Event": {
+      "title": "Event",
+      "description": "Church event",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string" },
+        "description": { "type": "string" },
+        "date": { "type": "string", "format": "date-time" },
+        "location": { "type": "string" },
+        "type": { "type": "string", "enum": ["culto", "vigilia", "conferencia", "campanha", "congresso", "evangelismo"] },
+        "imageUrl": { "type": "string" }
+      },
+      "required": ["title", "date", "type"]
+    },
+    "PrayerRequest": {
+      "title": "PrayerRequest",
+      "description": "Prayer request from members",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "userName": { "type": "string" },
+        "request": { "type": "string" },
+        "isAnonymous": { "type": "boolean" },
+        "intercessionCount": { "type": "integer" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["request", "createdAt"]
+    },
+    "Donation": {
+      "title": "Donation",
+      "description": "Record of donations (info only)",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "amount": { "type": "number" },
+        "type": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      }
+    },
+    "DiscipleshipLesson": {
+      "title": "DiscipleshipLesson",
+      "description": "Lesson for discipleship program",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string" },
+        "content": { "type": "string" },
+        "videoUrl": { "type": "string" },
+        "order": { "type": "integer" },
+        "category": { "type": "string" }
+      },
+      "required": ["title", "content", "order"]
+    },
+    "EventRegistration": {
+      "title": "EventRegistration",
+      "description": "User registration for an event",
+      "type": "object",
+      "properties": {
+        "eventId": { "type": "string" },
+        "userId": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["eventId", "userId"]
+    },
+    "Config": {
+      "title": "Config",
+      "description": "Church configuration settings",
+      "type": "object",
+      "properties": {
+        "prayerEmail": { "type": "string" },
+        "pixKey": { "type": "string" },
+        "pixQrCodeUrl": { "type": "string" },
+        "liveStreamUrl": { "type": "string" },
+        "dailyMessage": {
+          "type": "object",
+          "properties": {
+            "text": { "type": "string" },
+            "imageUrl": { "type": "string" },
+            "author": { "type": "string" },
+            "timestamp": { "type": "string" }
+          }
+        }
+      }
+    }
+  },
+  "firestore": {
+    "users": {
+      "schema": "User",
+      "description": "Collection of user profiles"
+    },
+    "posts": {
+      "schema": "Post",
+      "description": "Collection of community posts"
+    },
+    "events": {
+      "schema": "Event",
+      "description": "Collection of church events"
+    },
+    "prayers": {
+      "schema": "PrayerRequest",
+      "description": "Collection of prayer requests"
+    },
+    "discipleship": {
+      "schema": "DiscipleshipLesson",
+      "description": "Collection of discipleship lessons"
+    },
+    "event_registrations": {
+      "schema": "EventRegistration",
+      "description": "Collection of event registrations"
+    },
+    "config": {
+      "schema": "Config",
+      "description": "Global church configuration"
+    }
+  }
+}
