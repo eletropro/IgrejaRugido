@@ -191,6 +191,33 @@ export default function App() {
   const [activeTab, setActiveTab] = useState('home');
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [installPrompt, setInstallPrompt] = useState<any>(null);
+  const [showInstallBanner, setShowInstallBanner] = useState(false);
+
+  // PWA Install Logic
+  useEffect(() => {
+    const handleBeforeInstallPrompt = (e: any) => {
+      e.preventDefault();
+      setInstallPrompt(e);
+      setShowInstallBanner(true);
+    };
+
+    window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+
+    return () => {
+      window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+    };
+  }, []);
+
+  const handleInstall = async () => {
+    if (!installPrompt) return;
+    installPrompt.prompt();
+    const { outcome } = await installPrompt.userChoice;
+    if (outcome === 'accepted') {
+      setInstallPrompt(null);
+      setShowInstallBanner(false);
+    }
+  };
 
   // Auth Listener
   useEffect(() => {
@@ -371,6 +398,40 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-black text-white font-sans">
+      {/* PWA Install Banner */}
+      <AnimatePresence>
+        {showInstallBanner && (
+          <motion.div
+            initial={{ y: -100 }}
+            animate={{ y: 0 }}
+            exit={{ y: -100 }}
+            className="fixed top-0 left-0 right-0 z-[100] p-4 bg-[#D4AF37] text-black flex items-center justify-between shadow-2xl"
+          >
+            <div className="flex items-center gap-3">
+              <Lion className="w-8 h-8" />
+              <div>
+                <p className="font-bold text-sm">Instalar Rugido Profético</p>
+                <p className="text-xs opacity-80">Acesse mais rápido direto da sua tela inicial</p>
+              </div>
+            </div>
+            <div className="flex gap-2">
+              <button 
+                onClick={() => setShowInstallBanner(false)}
+                className="px-3 py-1.5 text-xs font-medium border border-black/20 rounded-lg"
+              >
+                Agora não
+              </button>
+              <button 
+                onClick={handleInstall}
+                className="px-4 py-1.5 text-xs font-bold bg-black text-white rounded-lg shadow-lg"
+              >
+                Instalar
+              </button>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       {/* Mobile Header */}
       <header className="lg:hidden flex items-center justify-between p-4 border-b border-zinc-800 sticky top-0 bg-black z-50">
         <div className="flex items-center gap-2">
@@ -486,6 +547,28 @@ export default function App() {
 // --- Views ---
 
 function LoginScreen() {
+  const [error, setError] = useState<string | null>(null);
+  const [isLoggingIn, setIsLoggingIn] = useState(false);
+
+  const handleLogin = async () => {
+    setError(null);
+    setIsLoggingIn(true);
+    try {
+      await signInWithGoogle();
+    } catch (err: any) {
+      console.error(err);
+      if (err.code === 'auth/popup-blocked') {
+        setError('O pop-up de login foi bloqueado pelo seu navegador. Por favor, permita pop-ups para este site.');
+      } else if (err.code === 'auth/cancelled-popup-request') {
+        setError('O login foi cancelado.');
+      } else {
+        setError('Ocorreu um erro ao tentar entrar com o Google. Tente novamente.');
+      }
+    } finally {
+      setIsLoggingIn(false);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-black flex items-center justify-center p-4">
       <div className="max-w-md w-full text-center">
@@ -501,9 +584,36 @@ function LoginScreen() {
         <h1 className="text-4xl font-bold mb-2 tracking-tighter">IGREJA PROFÉTICA</h1>
         <h2 className="text-[#D4AF37] text-2xl font-light mb-8 tracking-[0.2em]">RUGIDO</h2>
         <p className="text-zinc-400 mb-8">Conectando você ao Reino de Deus através da tecnologia e da fé.</p>
-        <Button onClick={signInWithGoogle} className="w-full py-4 text-lg rounded-2xl">
-          <LogIn className="w-5 h-5" /> Entrar com Google
+        
+        {error && (
+          <motion.div 
+            initial={{ opacity: 0, y: -10 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="bg-red-500/10 border border-red-500/50 text-red-500 p-4 rounded-xl mb-6 text-sm"
+          >
+            {error}
+          </motion.div>
+        )}
+
+        <Button 
+          onClick={handleLogin} 
+          disabled={isLoggingIn}
+          className="w-full py-4 text-lg rounded-2xl"
+        >
+          {isLoggingIn ? (
+            <motion.div 
+              animate={{ rotate: 360 }} 
+              transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
+              className="w-5 h-5 border-2 border-black border-t-transparent rounded-full"
+            />
+          ) : (
+            <><LogIn className="w-5 h-5" /> Entrar com Google</>
+          )}
         </Button>
+        
+        <p className="text-zinc-600 text-[10px] mt-6 uppercase tracking-widest">
+          Ao entrar, você concorda com nossos termos de uso.
+        </p>
       </div>
     </div>
   );
