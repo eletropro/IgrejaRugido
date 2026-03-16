@@ -677,7 +677,7 @@ function LoginScreen() {
                     type="text" 
                     placeholder="Seu Nome" 
                     required
-                    className="w-full bg-black/40 border border-zinc-800 rounded-xl pl-10 pr-4 py-3 text-sm focus:border-[#D4AF37] outline-none"
+                    className="w-full bg-black/40 border border-zinc-800 rounded-xl pl-10 pr-4 py-3 text-sm text-white focus:border-[#D4AF37] outline-none placeholder:text-zinc-600"
                     value={name}
                     onChange={(e) => setName(e.target.value)}
                   />
@@ -689,7 +689,7 @@ function LoginScreen() {
                   type="email" 
                   placeholder="E-mail" 
                   required
-                  className="w-full bg-black/40 border border-zinc-800 rounded-xl pl-10 pr-4 py-3 text-sm focus:border-[#D4AF37] outline-none"
+                  className="w-full bg-black/40 border border-zinc-800 rounded-xl pl-10 pr-4 py-3 text-sm text-white focus:border-[#D4AF37] outline-none placeholder:text-zinc-600"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                 />
@@ -700,7 +700,7 @@ function LoginScreen() {
                   type="password" 
                   placeholder="Senha" 
                   required
-                  className="w-full bg-black/40 border border-zinc-800 rounded-xl pl-10 pr-4 py-3 text-sm focus:border-[#D4AF37] outline-none"
+                  className="w-full bg-black/40 border border-zinc-800 rounded-xl pl-10 pr-4 py-3 text-sm text-white focus:border-[#D4AF37] outline-none placeholder:text-zinc-600"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                 />
