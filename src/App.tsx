@@ -3,7 +3,7 @@ import {
   Home, Book, MessageSquare, PenTool, Users, Calendar, 
   Video, GraduationCap, Heart, User, Settings, Send, 
   Plus, ThumbsUp, Share2, MapPin, LogIn, LogOut, Search,
-  Menu, X, ChevronRight, Play, Trash2, Camera
+  Menu, X, ChevronRight, Play, Trash2, Camera, Mail, Lock
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
@@ -12,7 +12,7 @@ import {
   where, getDocs, deleteDoc, getDocFromServer
 } from 'firebase/firestore';
 import { onAuthStateChanged, User as FirebaseUser } from 'firebase/auth';
-import { db, auth, signInWithGoogle, logout } from './firebase';
+import { db, auth, signInWithGoogle, logout, signUpWithEmail, loginWithEmail } from './firebase';
 import { UserProfile, Post, ChurchEvent, PrayerRequest, ChurchConfig, DiscipleshipLesson } from './types';
 
 // --- Icons ---
@@ -533,8 +533,14 @@ export default function App() {
 function LoginScreen() {
   const [error, setError] = useState<string | null>(null);
   const [isLoggingIn, setIsLoggingIn] = useState(false);
+  const [mode, setMode] = useState<'google' | 'email' | 'signup'>('google');
+  
+  // Email Form State
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [name, setName] = useState('');
 
-  const handleLogin = async () => {
+  const handleGoogleLogin = async () => {
     setError(null);
     setIsLoggingIn(true);
     try {
@@ -546,9 +552,38 @@ function LoginScreen() {
       } else if (err.code === 'auth/cancelled-popup-request') {
         setError('O login foi cancelado.');
       } else if (err.code === 'auth/unauthorized-domain') {
-        setError('Este domínio ainda não foi autorizado. Por favor, aguarde alguns segundos e tente novamente (o Firebase está processando a autorização).');
+        setError('Este domínio ainda não foi autorizado no Firebase. Por favor, siga as instruções abaixo para autorizar.');
       } else {
         setError('Erro ao conectar. Tente recarregar a página ou verifique se você está logado no Google.');
+      }
+    } finally {
+      setIsLoggingIn(false);
+    }
+  };
+
+  const handleEmailAuth = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError(null);
+    setIsLoggingIn(true);
+    try {
+      if (mode === 'signup') {
+        if (!name.trim()) throw new Error('Por favor, informe seu nome.');
+        await signUpWithEmail(email, password, name);
+      } else {
+        await loginWithEmail(email, password);
+      }
+    } catch (err: any) {
+      console.error(err);
+      if (err.code === 'auth/user-not-found' || err.code === 'auth/wrong-password' || err.code === 'auth/invalid-credential') {
+        setError('E-mail ou senha incorretos.');
+      } else if (err.code === 'auth/email-already-in-use') {
+        setError('Este e-mail já está em uso.');
+      } else if (err.code === 'auth/weak-password') {
+        setError('A senha deve ter pelo menos 6 caracteres.');
+      } else if (err.code === 'auth/operation-not-allowed') {
+        setError('O login por e-mail/senha não está ativado no Firebase Console.');
+      } else {
+        setError(err.message || 'Erro ao realizar autenticação.');
       }
     } finally {
       setIsLoggingIn(false);
@@ -571,10 +606,21 @@ function LoginScreen() {
         <h2 className="text-[#D4AF37] text-2xl font-light mb-8 tracking-[0.2em]">RUGIDO</h2>
         
         <div className="bg-zinc-900/50 border border-zinc-800 p-6 rounded-2xl mb-8">
-          <p className="text-zinc-300 text-sm mb-4">
-            Faça login com sua conta Google para acessar o portal.
-          </p>
-          
+          <div className="flex bg-black/40 p-1 rounded-xl mb-6">
+            <button 
+              onClick={() => setMode('google')}
+              className={cn("flex-1 py-2 text-xs font-bold rounded-lg transition-all", mode === 'google' ? "bg-[#D4AF37] text-black" : "text-zinc-500")}
+            >
+              GOOGLE
+            </button>
+            <button 
+              onClick={() => setMode('email')}
+              className={cn("flex-1 py-2 text-xs font-bold rounded-lg transition-all", mode === 'email' || mode === 'signup' ? "bg-[#D4AF37] text-black" : "text-zinc-500")}
+            >
+              E-MAIL
+            </button>
+          </div>
+
           {error && (
             <motion.div 
               initial={{ opacity: 0, y: -10 }}
@@ -588,21 +634,101 @@ function LoginScreen() {
             </motion.div>
           )}
 
-          <Button 
-            onClick={handleLogin} 
-            disabled={isLoggingIn}
-            className="w-full py-4 text-lg rounded-2xl shadow-[0_0_20px_rgba(212,175,55,0.2)]"
-          >
-            {isLoggingIn ? (
-              <motion.div 
-                animate={{ rotate: 360 }} 
-                transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
-                className="w-5 h-5 border-2 border-black border-t-transparent rounded-full"
-              />
-            ) : (
-              <><LogIn className="w-5 h-5" /> Entrar com Google</>
-            )}
-          </Button>
+          {mode === 'google' ? (
+            <div className="space-y-6">
+              <p className="text-zinc-300 text-sm">
+                Entre com sua conta Google para acesso rápido.
+              </p>
+              <Button 
+                onClick={handleGoogleLogin} 
+                disabled={isLoggingIn}
+                className="w-full py-4 text-lg rounded-2xl shadow-[0_0_20px_rgba(212,175,55,0.2)]"
+              >
+                {isLoggingIn ? (
+                  <motion.div 
+                    animate={{ rotate: 360 }} 
+                    transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
+                    className="w-5 h-5 border-2 border-black border-t-transparent rounded-full"
+                  />
+                ) : (
+                  <><LogIn className="w-5 h-5" /> Entrar com Google</>
+                )}
+              </Button>
+
+              {error?.includes('domínio ainda não foi autorizado') && (
+                <div className="mt-6 p-4 bg-blue-500/10 border border-blue-500/30 rounded-xl text-left">
+                  <p className="text-blue-400 text-[10px] font-bold uppercase mb-2">Como resolver:</p>
+                  <ol className="text-[10px] text-zinc-400 space-y-1 list-decimal ml-4">
+                    <li>Acesse o <a href="https://console.firebase.google.com/" target="_blank" className="text-blue-400 underline">Firebase Console</a>.</li>
+                    <li>Vá em <b>Authentication</b> {'>'} <b>Settings</b> {'>'} <b>Authorized domains</b>.</li>
+                    <li>Clique em <b>Add domain</b> e adicione:</li>
+                    <li className="font-mono text-white bg-black/50 p-1 rounded mt-1 select-all">ais-dev-6qu467pzfxlkbsmszredbx-451291757229.us-east1.run.app</li>
+                    <li className="font-mono text-white bg-black/50 p-1 rounded mt-1 select-all">ais-pre-6qu467pzfxlkbsmszredbx-451291757229.us-east1.run.app</li>
+                  </ol>
+                </div>
+              )}
+            </div>
+          ) : (
+            <form onSubmit={handleEmailAuth} className="space-y-4">
+              {mode === 'signup' && (
+                <div className="relative">
+                  <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500" />
+                  <input 
+                    type="text" 
+                    placeholder="Seu Nome" 
+                    required
+                    className="w-full bg-black/40 border border-zinc-800 rounded-xl pl-10 pr-4 py-3 text-sm focus:border-[#D4AF37] outline-none"
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                  />
+                </div>
+              )}
+              <div className="relative">
+                <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500" />
+                <input 
+                  type="email" 
+                  placeholder="E-mail" 
+                  required
+                  className="w-full bg-black/40 border border-zinc-800 rounded-xl pl-10 pr-4 py-3 text-sm focus:border-[#D4AF37] outline-none"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                />
+              </div>
+              <div className="relative">
+                <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500" />
+                <input 
+                  type="password" 
+                  placeholder="Senha" 
+                  required
+                  className="w-full bg-black/40 border border-zinc-800 rounded-xl pl-10 pr-4 py-3 text-sm focus:border-[#D4AF37] outline-none"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                />
+              </div>
+              <Button 
+                type="submit"
+                disabled={isLoggingIn}
+                className="w-full py-4 text-lg rounded-2xl shadow-[0_0_20px_rgba(212,175,55,0.2)]"
+              >
+                {isLoggingIn ? (
+                  <motion.div 
+                    animate={{ rotate: 360 }} 
+                    transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
+                    className="w-5 h-5 border-2 border-black border-t-transparent rounded-full"
+                  />
+                ) : (
+                  mode === 'signup' ? 'Criar Conta' : 'Entrar'
+                )}
+              </Button>
+              <button 
+                type="button"
+                onClick={() => setMode(mode === 'email' ? 'signup' : 'email')}
+                className="text-xs text-zinc-500 hover:text-[#D4AF37]"
+              >
+                {mode === 'email' ? 'Não tem conta? Cadastre-se' : 'Já tem conta? Entre aqui'}
+              </button>
+            </form>
+          )}
         </div>
 
         <div className="space-y-4">
