@@ -317,7 +317,7 @@ export default function App() {
         // Generate Image
         const imgResponse = await ai.models.generateContent({
           model: "gemini-2.5-flash-image",
-          contents: { parts: [{ text: `Uma imagem cristã pacífica, sagrada e inspiradora para acompanhar esta mensagem: ${messageText}` }] },
+          contents: { parts: [{ text: `Uma imagem cristã majestosa e inspiradora, estilo pintura artística ou fotografia cinematográfica, SEM NENHUM TEXTO, SEM LETRAS, SEM PALAVRAS. Foco em paisagens bíblicas, luz divina, ou símbolos sagrados (como um leão majestoso, uma cruz ao pôr do sol, ou montanhas sagradas). Estilo visual: Cores quentes, iluminação dramática, alta resolução. Mensagem: ${messageText}` }] },
         });
         
         let imageUrl = "https://picsum.photos/seed/daily/800/400";
@@ -561,28 +561,12 @@ function LoginScreen() {
         setError('O pop-up de login foi bloqueado. Clique no ícone de cadeado ou nas configurações do seu navegador e permita "Pop-ups e redirecionamentos".');
       } else if (err.code === 'auth/cancelled-popup-request') {
         setError('O login foi cancelado.');
-      } else if (err.code === 'auth/unauthorized-domain') {
-        setError('Este domínio ainda não foi autorizado no Firebase. Por favor, aguarde um momento ou tente o acesso de visitante.');
       } else {
-        setError('Erro ao conectar. Verifique sua internet ou tente o acesso de visitante abaixo.');
+        setError('Erro ao conectar. Verifique sua internet ou tente recarregar a página.');
       }
     } finally {
       setIsLoggingIn(false);
     }
-  };
-
-  const handleGuestLogin = () => {
-    // Mock a guest user for preview/testing if Google fails
-    const guestUser = {
-      uid: 'guest_' + Math.random().toString(36).substr(2, 9),
-      displayName: 'Visitante',
-      email: 'visitante@exemplo.com',
-      photoURL: 'https://cdn-icons-png.flaticon.com/512/149/149071.png'
-    };
-    // We can't easily "force" a firebase user without auth, 
-    // but we can show a message or use a local state if needed.
-    // For now, let's just give a clear instruction.
-    setError('O acesso é exclusivo via Google para garantir sua segurança e salvar seu progresso (níveis, pontos e pedidos). Se o botão não abrir, tente recarregar a página.');
   };
 
   return (
@@ -1065,7 +1049,7 @@ function AdminView({ churchConfig, setChurchConfig }: { churchConfig: ChurchConf
       const genAI = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY! });
       const response = await genAI.models.generateContent({
         model: 'gemini-2.5-flash-image',
-        contents: [{ text: `Uma imagem artística e inspiradora para uma mensagem bíblica: ${dailyText}. Estilo: Pintura a óleo moderna, luz divina, tons dourados e quentes.` }],
+        contents: [{ text: `Uma imagem cristã majestosa e inspiradora, estilo pintura artística ou fotografia cinematográfica, SEM NENHUM TEXTO, SEM LETRAS, SEM PALAVRAS. Foco em paisagens bíblicas, luz divina, ou símbolos sagrados (como um leão majestoso, uma cruz ao pôr do sol, ou montanhas sagradas). Estilo visual: Cores quentes, iluminação dramática, alta resolução. Tema: ${dailyText}` }],
         config: { imageConfig: { aspectRatio: "16:9" } }
       });
       
@@ -1079,6 +1063,49 @@ function AdminView({ churchConfig, setChurchConfig }: { churchConfig: ChurchConf
     } catch (error) {
       console.error(error);
       alert('Erro ao gerar imagem.');
+    } finally {
+      setGeneratingImage(false);
+    }
+  };
+
+  const regenerateDailyMessage = async () => {
+    setGeneratingImage(true);
+    try {
+      const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY! });
+      
+      // Generate Message
+      const msgResponse = await ai.models.generateContent({
+        model: "gemini-3-flash-preview",
+        contents: "Gere uma mensagem bíblica curta e inspiradora para o dia de hoje em português, com uma referência bíblica curta. Retorne apenas a mensagem e a referência, sem introduções.",
+      });
+      const text = msgResponse.text || "";
+      const parts = text.split('\n').filter(p => p.trim());
+      const messageText = parts[0]?.replace(/"/g, '') || "O Senhor é o meu pastor, nada me faltará.";
+      const author = parts.length > 1 ? parts[parts.length - 1] : "Salmos 23:1";
+
+      setDailyText(messageText);
+      setDailyAuthor(author);
+
+      // Generate Image
+      const imgResponse = await ai.models.generateContent({
+        model: "gemini-2.5-flash-image",
+        contents: { parts: [{ text: `Uma imagem cristã majestosa e inspiradora, estilo pintura artística ou fotografia cinematográfica, SEM NENHUM TEXTO, SEM LETRAS, SEM PALAVRAS. Foco em paisagens bíblicas, luz divina, ou símbolos sagrados (como um leão majestoso, uma cruz ao pôr do sol, ou montanhas sagradas). Estilo visual: Cores quentes, iluminação dramática, alta resolução. Mensagem: ${messageText}` }] },
+      });
+      
+      if (imgResponse.candidates?.[0]?.content?.parts) {
+        for (const part of imgResponse.candidates[0].content.parts) {
+          if (part.inlineData) {
+            const rawImageUrl = `data:image/png;base64,${part.inlineData.data}`;
+            const resized = await resizeImage(rawImageUrl);
+            setDailyImage(resized);
+            break;
+          }
+        }
+      }
+      alert('Nova mensagem e imagem geradas! Clique em "Publicar Mensagem" para salvar.');
+    } catch (error) {
+      console.error(error);
+      alert('Erro ao regenerar mensagem.');
     } finally {
       setGeneratingImage(false);
     }
@@ -1220,7 +1247,12 @@ function AdminView({ churchConfig, setChurchConfig }: { churchConfig: ChurchConf
 
       {adminTab === 'daily' && (
         <Card className="space-y-4">
-          <h3 className="text-xl font-bold">Mensagem Diária do Pastor</h3>
+          <div className="flex justify-between items-center">
+            <h3 className="text-xl font-bold">Mensagem Diária do Pastor</h3>
+            <Button variant="outline" size="sm" onClick={regenerateDailyMessage} disabled={generatingImage}>
+              {generatingImage ? 'Gerando...' : 'Regenerar Tudo (IA)'}
+            </Button>
+          </div>
           <textarea 
             placeholder="Escreva a mensagem inspiradora de hoje..." 
             className="w-full bg-zinc-800 border-zinc-700 rounded-lg px-3 py-2 h-32"
