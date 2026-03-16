@@ -1596,6 +1596,7 @@ function CommunityView({ profile }: { profile: UserProfile | null }) {
   const [imageUrl, setImageUrl] = useState('');
   const [showImageInput, setShowImageInput] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const cameraInputRef = useRef<HTMLInputElement>(null);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -1732,21 +1733,29 @@ function CommunityView({ profile }: { profile: UserProfile | null }) {
                   ref={fileInputRef}
                   onChange={handleFileChange}
                 />
+                <input 
+                  type="file" 
+                  accept="image/*" 
+                  capture="environment"
+                  className="hidden" 
+                  ref={cameraInputRef}
+                  onChange={handleFileChange}
+                />
                 <Button 
                   variant="ghost" 
                   className={cn("p-2", showImageInput && "text-[#D4AF37]")} 
-                  onClick={() => fileInputRef.current?.click()}
+                  onClick={() => cameraInputRef.current?.click()}
+                  title="Tirar Foto"
                 >
                   <Camera className="w-5 h-5" />
                 </Button>
                 <Button 
                   variant="ghost" 
-                  className="p-2"
-                  onClick={() => {
-                    setNewPost(prev => prev + " 📖 ");
-                  }}
+                  className="p-2" 
+                  onClick={() => fileInputRef.current?.click()}
+                  title="Escolher da Galeria"
                 >
-                  <Book className="w-5 h-5" />
+                  <Plus className="w-5 h-5" />
                 </Button>
               </div>
               <Button onClick={handlePost} disabled={!newPost.trim()}>Postar</Button>
@@ -2127,6 +2136,7 @@ function DonationsView({ churchConfig }: { churchConfig: ChurchConfig | null }) 
 function ProfileView({ profile }: { profile: UserProfile | null }) {
   const [uploading, setUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const cameraInputRef = useRef<HTMLInputElement>(null);
 
   const handleImageChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -2182,12 +2192,38 @@ function ProfileView({ profile }: { profile: UserProfile | null }) {
         <p className="text-[#D4AF37] font-bold uppercase tracking-widest text-sm">{profile?.role}</p>
         <p className="text-zinc-500 mt-2">Membro desde {profile?.createdAt ? format(new Date(profile.createdAt), "MMMM 'de' yyyy", { locale: ptBR }) : ''}</p>
         
+        <div className="flex flex-wrap justify-center gap-3 mt-6">
+          <Button 
+            variant="outline" 
+            className="border-[#D4AF37]/30 text-[#D4AF37]"
+            onClick={() => fileInputRef.current?.click()}
+          >
+            <Plus className="w-4 h-4" /> {uploading ? 'Enviando...' : 'Galeria'}
+          </Button>
+          <Button 
+            variant="outline" 
+            className="border-[#D4AF37]/30 text-[#D4AF37]"
+            onClick={() => cameraInputRef.current?.click()}
+          >
+            <Camera className="w-4 h-4" /> {uploading ? 'Enviando...' : 'Tirar Foto'}
+          </Button>
+        </div>
+
+        <input 
+          type="file" 
+          ref={cameraInputRef} 
+          className="hidden" 
+          accept="image/*" 
+          capture="user" 
+          onChange={handleImageChange}
+        />
+
         <Button 
-          variant="outline" 
-          className="mt-6 border-[#D4AF37]/30 text-[#D4AF37]"
-          onClick={() => fileInputRef.current?.click()}
+          variant="ghost" 
+          className="mt-8 text-red-500 hover:bg-red-500/10 w-full max-w-xs"
+          onClick={logout}
         >
-          <Camera className="w-4 h-4" /> {uploading ? 'Enviando...' : 'Alterar Foto de Perfil'}
+          <LogOut className="w-4 h-4" /> Sair da Conta
         </Button>
       </div>
 
