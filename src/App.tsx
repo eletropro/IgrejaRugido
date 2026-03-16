@@ -494,6 +494,15 @@ export default function App() {
                     {item.label}
                   </button>
                 ))}
+                <div className="pt-4 mt-4 border-t border-zinc-800">
+                  <button
+                    onClick={() => { logout(); setIsMenuOpen(false); }}
+                    className="w-full flex items-center gap-4 px-4 py-4 rounded-2xl text-lg text-red-400"
+                  >
+                    <LogOut />
+                    Sair da Conta
+                  </button>
+                </div>
               </nav>
             </motion.div>
           )}
@@ -1586,6 +1595,18 @@ function CommunityView({ profile }: { profile: UserProfile | null }) {
   const [newPost, setNewPost] = useState('');
   const [imageUrl, setImageUrl] = useState('');
   const [showImageInput, setShowImageInput] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      setImageUrl(event.target?.result as string);
+      setShowImageInput(true);
+    };
+    reader.readAsDataURL(file);
+  };
 
   useEffect(() => {
     const q = query(collection(db, 'posts'), orderBy('createdAt', 'desc'));
@@ -1679,23 +1700,42 @@ function CommunityView({ profile }: { profile: UserProfile | null }) {
             />
             
             {showImageInput && (
-              <div className="mt-2 p-3 bg-zinc-900 rounded-xl border border-zinc-800">
-                <input 
-                  type="text" 
-                  placeholder="Cole a URL da imagem aqui..." 
-                  className="w-full bg-transparent border-none focus:ring-0 text-sm"
-                  value={imageUrl}
-                  onChange={(e) => setImageUrl(e.target.value)}
-                />
+              <div className="mt-2 p-3 bg-zinc-900 rounded-xl border border-zinc-800 space-y-3">
+                {imageUrl.startsWith('data:image') ? (
+                  <div className="relative rounded-lg overflow-hidden aspect-video">
+                    <img src={imageUrl} alt="Preview" className="w-full h-full object-cover" />
+                    <button 
+                      onClick={() => setImageUrl('')}
+                      className="absolute top-2 right-2 bg-black/50 p-1.5 rounded-full text-white"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  </div>
+                ) : (
+                  <input 
+                    type="text" 
+                    placeholder="Cole a URL da imagem aqui..." 
+                    className="w-full bg-transparent border-none focus:ring-0 text-sm"
+                    value={imageUrl}
+                    onChange={(e) => setImageUrl(e.target.value)}
+                  />
+                )}
               </div>
             )}
 
             <div className="flex justify-between items-center mt-4 pt-4 border-t border-zinc-800">
               <div className="flex gap-2">
+                <input 
+                  type="file" 
+                  accept="image/*" 
+                  className="hidden" 
+                  ref={fileInputRef}
+                  onChange={handleFileChange}
+                />
                 <Button 
                   variant="ghost" 
                   className={cn("p-2", showImageInput && "text-[#D4AF37]")} 
-                  onClick={() => setShowImageInput(!showImageInput)}
+                  onClick={() => fileInputRef.current?.click()}
                 >
                   <Camera className="w-5 h-5" />
                 </Button>
@@ -2141,6 +2181,14 @@ function ProfileView({ profile }: { profile: UserProfile | null }) {
         <h1 className="text-3xl font-bold mt-6">{profile?.displayName}</h1>
         <p className="text-[#D4AF37] font-bold uppercase tracking-widest text-sm">{profile?.role}</p>
         <p className="text-zinc-500 mt-2">Membro desde {profile?.createdAt ? format(new Date(profile.createdAt), "MMMM 'de' yyyy", { locale: ptBR }) : ''}</p>
+        
+        <Button 
+          variant="outline" 
+          className="mt-6 border-[#D4AF37]/30 text-[#D4AF37]"
+          onClick={() => fileInputRef.current?.click()}
+        >
+          <Camera className="w-4 h-4" /> {uploading ? 'Enviando...' : 'Alterar Foto de Perfil'}
+        </Button>
       </div>
 
       <div className="grid grid-cols-1 gap-4">
