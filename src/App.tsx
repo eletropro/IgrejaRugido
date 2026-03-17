@@ -3,13 +3,13 @@ import {
   Home, Book, MessageSquare, PenTool, Users, Calendar, 
   Video, GraduationCap, Heart, User, Settings, Send, 
   Plus, ThumbsUp, Share2, MapPin, LogIn, LogOut, Search,
-  Menu, X, ChevronRight, Play, Trash2, Camera, Mail, Lock
+  Menu, X, ChevronRight, Play, Trash2, Camera, Mail, Lock, Bell, BellOff, AlertTriangle
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   collection, query, orderBy, onSnapshot, addDoc, 
   serverTimestamp, doc, setDoc, getDoc, updateDoc, increment,
-  where, getDocs, deleteDoc, getDocFromServer
+  where, getDocs, deleteDoc, getDocFromServer, limit
 } from 'firebase/firestore';
 import { onAuthStateChanged, User as FirebaseUser } from 'firebase/auth';
 import { db, auth, signInWithGoogle, logout, signUpWithEmail, loginWithEmail } from './firebase';
@@ -193,6 +193,46 @@ export default function App() {
   const [loading, setLoading] = useState(true);
   const [installPrompt, setInstallPrompt] = useState<any>(null);
   const [showInstallBanner, setShowInstallBanner] = useState(false);
+  const [reminders, setReminders] = useState<string[]>([]);
+  const [activeNotification, setActiveNotification] = useState<{title: string, message: string} | null>(null);
+
+  useEffect(() => {
+    if (!user) return;
+    const unsub = onSnapshot(collection(db, `users/${user.uid}/reminders`), (snap) => {
+      setReminders(snap.docs.map(doc => doc.id));
+    });
+    return () => unsub();
+  }, [user]);
+
+  // Notification Checker
+  useEffect(() => {
+    const checkReminders = async () => {
+      if (!user || reminders.length === 0) return;
+      
+      const now = new Date();
+      
+      const q = query(collection(db, 'events'), where('__name__', 'in', reminders));
+      const snap = await getDocs(q);
+      
+      snap.docs.forEach(doc => {
+        const event = doc.data() as ChurchEvent;
+        const eventDate = new Date(event.date);
+        
+        // Check if event is exactly 1 hour away (within a 1-minute window)
+        const diffMinutes = Math.floor((eventDate.getTime() - now.getTime()) / (1000 * 60));
+        
+        if (diffMinutes === 60) {
+          setActiveNotification({
+            title: "Lembrete de Culto",
+            message: `O evento "${event.title}" começará em 1 hora!`
+          });
+        }
+      });
+    };
+
+    const interval = setInterval(checkReminders, 60000); // Check every minute
+    return () => clearInterval(interval);
+  }, [user, reminders]);
 
   // PWA Install Logic
   useEffect(() => {
@@ -293,57 +333,66 @@ export default function App() {
     };
   }, []);
 
+  const regenerateDailyMessage = async () => {
+    if (!churchConfig) return;
+    try {
+      const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY! });
+      
+      // Generate Message
+      const msgResponse = await ai.models.generateContent({
+        model: "gemini-3.1-pro-preview",
+        contents: "Gere uma mensagem bíblica curta e inspiradora para o dia de hoje em português, com uma referência bíblica curta. Retorne apenas a mensagem e a referência, sem introduções.",
+      });
+      const text = msgResponse.text || "";
+      
+      const parts = text.split('\n').filter(p => p.trim());
+      const messageText = parts[0]?.replace(/"/g, '') || "O Senhor é o meu pastor, nada me faltará.";
+      const author = parts.length > 1 ? parts[parts.length - 1] : "Salmos 23:1";
+
+      // Generate Image
+      let imageUrl = churchConfig.dailyMessage?.imageUrl || "https://picsum.photos/seed/daily/800/400";
+      try {
+        const imgResponse = await ai.models.generateContent({
+          model: "gemini-2.5-flash-image",
+          contents: { parts: [{ text: `Uma imagem cristã majestosa e inspiradora, estilo pintura artística ou fotografia cinematográfica, SEM NENHUM TEXTO, SEM LETRAS, SEM PALAVRAS. Foco em paisagens bíblicas, luz divina, ou símbolos sagrados. Tema: ${messageText}` }] },
+        });
+        
+        if (imgResponse.candidates?.[0]?.content?.parts) {
+          for (const part of imgResponse.candidates[0].content.parts) {
+            if (part.inlineData) {
+              const rawImageUrl = `data:image/png;base64,${part.inlineData.data}`;
+              imageUrl = await resizeImage(rawImageUrl, 800, 450);
+              break;
+            }
+          }
+        }
+      } catch (imgError) {
+        console.error("Image generation failed:", imgError);
+      }
+
+      const updatedDailyMessage = {
+        text: messageText,
+        author: author,
+        imageUrl: imageUrl,
+        timestamp: new Date().toISOString()
+      };
+
+      await updateDoc(doc(db, 'config', 'church'), {
+        dailyMessage: updatedDailyMessage
+      });
+      
+      setChurchConfig(prev => prev ? { ...prev, dailyMessage: updatedDailyMessage } : null);
+    } catch (error) {
+      console.error("Error regenerating daily message:", error);
+    }
+  };
+
   const checkAndUpdateDailyMessage = async (config: ChurchConfig) => {
     const today = new Date().toISOString().split('T')[0];
     const lastUpdate = config.dailyMessage?.timestamp?.split('T')[0];
 
     if (lastUpdate !== today) {
-      try {
-        const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY! });
-        
-        // Generate Message
-        const msgResponse = await ai.models.generateContent({
-          model: "gemini-3-flash-preview",
-          contents: "Gere uma mensagem bíblica curta e inspiradora para o dia de hoje em português, com uma referência bíblica curta. Retorne apenas a mensagem e a referência, sem introduções.",
-        });
-        const text = msgResponse.text || "";
-        
-        const parts = text.split('\n').filter(p => p.trim());
-        const messageText = parts[0]?.replace(/"/g, '') || "O Senhor é o meu pastor, nada me faltará.";
-        const author = parts.length > 1 ? parts[parts.length - 1] : "Salmos 23:1";
-
-        // Generate Image
-        const imgResponse = await ai.models.generateContent({
-          model: "gemini-2.5-flash-image",
-          contents: { parts: [{ text: `Uma imagem cristã majestosa e inspiradora, estilo pintura artística ou fotografia cinematográfica, SEM NENHUM TEXTO, SEM LETRAS, SEM PALAVRAS. Foco em paisagens bíblicas, luz divina, ou símbolos sagrados (como um leão majestoso, uma cruz ao pôr do sol, ou montanhas sagradas). Estilo visual: Cores quentes, iluminação dramática, alta resolução. Mensagem: ${messageText}` }] },
-        });
-        
-        let imageUrl = "https://picsum.photos/seed/daily/800/400";
-        if (imgResponse.candidates?.[0]?.content?.parts) {
-          for (const part of imgResponse.candidates[0].content.parts) {
-            if (part.inlineData) {
-              const rawImageUrl = `data:image/png;base64,${part.inlineData.data}`;
-              imageUrl = await resizeImage(rawImageUrl);
-              break;
-            }
-          }
-        }
-
-        const updatedDailyMessage = {
-          text: messageText,
-          author: author,
-          imageUrl: imageUrl,
-          timestamp: new Date().toISOString()
-        };
-
-        await updateDoc(doc(db, 'config', 'church'), {
-          dailyMessage: updatedDailyMessage
-        });
-        
-        setChurchConfig(prev => prev ? { ...prev, dailyMessage: updatedDailyMessage } : null);
-      } catch (error) {
-        console.error("Error updating daily message:", error);
-      }
+      await regenerateDailyMessage();
     }
   };
 
@@ -382,6 +431,37 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-black text-white font-sans">
+      {/* Notifications Overlay */}
+      <AnimatePresence>
+        {activeNotification && (
+          <motion.div
+            initial={{ opacity: 0, scale: 0.9, y: 20 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            exit={{ opacity: 0, scale: 0.9, y: 20 }}
+            className="fixed bottom-24 left-4 right-4 z-[200] md:left-auto md:right-8 md:w-96"
+          >
+            <Card className="p-6 bg-[#D4AF37] text-black shadow-2xl border-none">
+              <div className="flex gap-4">
+                <div className="w-12 h-12 bg-black/10 rounded-full flex items-center justify-center shrink-0">
+                  <Bell className="w-6 h-6" />
+                </div>
+                <div className="flex-1">
+                  <h4 className="font-bold text-lg">{activeNotification.title}</h4>
+                  <p className="text-sm opacity-90">{activeNotification.message}</p>
+                  <Button 
+                    variant="ghost" 
+                    className="mt-4 w-full bg-black/10 hover:bg-black/20 border-none font-bold"
+                    onClick={() => setActiveNotification(null)}
+                  >
+                    Entendido
+                  </Button>
+                </div>
+              </div>
+            </Card>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       {/* PWA Install Banner */}
       <AnimatePresence>
         {showInstallBanner && (
@@ -518,17 +598,17 @@ export default function App() {
               exit={{ opacity: 0, y: -10 }}
               transition={{ duration: 0.2 }}
             >
-              {activeTab === 'home' && <HomeView profile={profile} churchConfig={churchConfig} />}
+              {activeTab === 'home' && <HomeView profile={profile} churchConfig={churchConfig} setActiveTab={setActiveTab} reminders={reminders} />}
               {activeTab === 'bible' && <BibleView profile={profile} />}
               {activeTab === 'ai' && <AIBibleView />}
               {activeTab === 'sermons' && <SermonGenView />}
               {activeTab === 'community' && <CommunityView profile={profile} />}
-              {activeTab === 'events' && <EventsView profile={profile} />}
+              {activeTab === 'events' && <EventsView profile={profile} reminders={reminders} />}
               {activeTab === 'live' && <LiveView churchConfig={churchConfig} />}
               {activeTab === 'discipleship' && <DiscipleshipView />}
               {activeTab === 'donations' && <DonationsView churchConfig={churchConfig} />}
               {activeTab === 'profile' && <ProfileView profile={profile} />}
-              {activeTab === 'admin' && <AdminView churchConfig={churchConfig} setChurchConfig={setChurchConfig} />}
+              {activeTab === 'admin' && <AdminView churchConfig={churchConfig} setChurchConfig={setChurchConfig} regenerateDailyMessage={regenerateDailyMessage} />}
             </motion.div>
           </AnimatePresence>
         </main>
@@ -758,8 +838,34 @@ function LoginScreen() {
   );
 }
 
-function HomeView({ profile, churchConfig }: { profile: UserProfile | null, churchConfig: ChurchConfig | null }) {
+function HomeView({ profile, churchConfig, setActiveTab, reminders }: { 
+  profile: UserProfile | null, 
+  churchConfig: ChurchConfig | null, 
+  setActiveTab: (tab: string) => void,
+  reminders: string[]
+}) {
   const [prayer, setPrayer] = useState('');
+  const [upcomingEvents, setUpcomingEvents] = useState<ChurchEvent[]>([]);
+
+  useEffect(() => {
+    const q = query(collection(db, 'events'), orderBy('date', 'asc'), limit(2));
+    const unsub = onSnapshot(q, (snap) => {
+      setUpcomingEvents(snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as ChurchEvent)));
+    });
+    return () => unsub();
+  }, []);
+
+  const toggleReminder = async (eventId: string) => {
+    if (!profile) return;
+    const isReminded = reminders.includes(eventId);
+    const reminderRef = doc(db, `users/${profile.uid}/reminders`, eventId);
+    
+    if (isReminded) {
+      await deleteDoc(reminderRef);
+    } else {
+      await setDoc(reminderRef, { createdAt: serverTimestamp() });
+    }
+  };
 
   const handlePrayer = async () => {
     if (!prayer.trim() || !profile) return;
@@ -839,22 +945,47 @@ function HomeView({ profile, churchConfig }: { profile: UserProfile | null, chur
       </section>
 
       <section>
-        <h3 className="text-xl font-bold mb-4 flex items-center gap-2">
-          <Video className="w-5 h-5 text-[#D4AF37]" /> Próximos Cultos
-        </h3>
+        <div className="flex justify-between items-center mb-4">
+          <h3 className="text-xl font-bold flex items-center gap-2">
+            <Video className="w-5 h-5 text-[#D4AF37]" /> Próximos Cultos
+          </h3>
+          <Button variant="ghost" size="sm" className="text-xs text-[#D4AF37]" onClick={() => setActiveTab('events')}>Ver Todos</Button>
+        </div>
         <div className="space-y-4">
-          {[
-            { title: 'Culto de Celebração', time: 'Hoje, 19:30', type: 'Presencial & Online' },
-            { title: 'Escola Bíblica', time: 'Domingo, 09:00', type: 'Online' },
-          ].map((item, i) => (
-            <div key={i} className="flex items-center justify-between p-4 bg-zinc-900/50 rounded-2xl border border-zinc-800">
-              <div>
-                <p className="font-bold">{item.title}</p>
-                <p className="text-sm text-zinc-500">{item.time}</p>
+          {upcomingEvents.map((event) => (
+            <div key={event.id} className="flex items-center justify-between p-4 bg-zinc-900/50 rounded-2xl border border-zinc-800">
+              <div className="flex items-center gap-4">
+                <div className="w-10 h-10 bg-zinc-800 rounded-xl flex items-center justify-center text-[#D4AF37]">
+                  <Calendar className="w-5 h-5" />
+                </div>
+                <div>
+                  <p className="font-bold text-sm">{event.title}</p>
+                  <p className="text-xs text-zinc-500">{format(new Date(event.date), "EEEE, HH:mm", { locale: ptBR })} • {event.location}</p>
+                </div>
               </div>
-              <Button variant="outline" className="text-xs py-1 px-3">Lembrar</Button>
+              <div className="flex items-center gap-2">
+                <Button 
+                  variant="ghost" 
+                  size="sm" 
+                  className={cn(
+                    "p-2 rounded-full",
+                    reminders.includes(event.id) ? "text-[#D4AF37] bg-[#D4AF37]/10" : "text-zinc-500"
+                  )}
+                  onClick={() => toggleReminder(event.id)}
+                >
+                  {reminders.includes(event.id) ? <Bell className="w-4 h-4" /> : <BellOff className="w-4 h-4" />}
+                </Button>
+                <span className="text-[10px] bg-zinc-800 px-2 py-1 rounded-lg text-zinc-400 uppercase font-bold tracking-tighter">
+                  {event.type}
+                </span>
+              </div>
             </div>
           ))}
+          {upcomingEvents.length === 0 && (
+            <div className="py-8 text-center text-zinc-600 text-sm border border-dashed border-zinc-800 rounded-2xl">
+              Nenhum evento cadastrado.
+            </div>
+          )}
         </div>
       </section>
     </div>
@@ -1095,7 +1226,11 @@ function BibleView({ profile }: { profile: UserProfile | null }) {
   );
 }
 
-function AdminView({ churchConfig, setChurchConfig }: { churchConfig: ChurchConfig | null, setChurchConfig: (config: ChurchConfig) => void }) {
+function AdminView({ churchConfig, setChurchConfig, regenerateDailyMessage }: { 
+  churchConfig: ChurchConfig | null, 
+  setChurchConfig: (config: ChurchConfig) => void,
+  regenerateDailyMessage: () => Promise<void>
+}) {
   const [adminTab, setAdminTab] = useState<'config' | 'events' | 'discipleship' | 'daily'>('config');
   
   // Config State
@@ -1103,6 +1238,10 @@ function AdminView({ churchConfig, setChurchConfig }: { churchConfig: ChurchConf
   const [pix, setPix] = useState(churchConfig?.pixKey || '');
   const [qrCode, setQrCode] = useState(churchConfig?.pixQrCodeUrl || '');
   const [liveUrl, setLiveUrl] = useState(churchConfig?.liveStreamUrl || '');
+  
+  // Stats State
+  const [memberCount, setMemberCount] = useState(0);
+  const [postCount, setPostCount] = useState(0);
   
   // Daily Message State
   const [dailyText, setDailyText] = useState(churchConfig?.dailyMessage?.text || '');
@@ -1125,7 +1264,13 @@ function AdminView({ churchConfig, setChurchConfig }: { churchConfig: ChurchConf
     const unsubLessons = onSnapshot(collection(db, 'discipleship'), (snap) => {
       setLessons(snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as DiscipleshipLesson)));
     });
-    return () => { unsubEvents(); unsubLessons(); };
+    const unsubUsers = onSnapshot(collection(db, 'users'), (snap) => {
+      setMemberCount(snap.size);
+    });
+    const unsubPosts = onSnapshot(collection(db, 'posts'), (snap) => {
+      setPostCount(snap.size);
+    });
+    return () => { unsubEvents(); unsubLessons(); unsubUsers(); unsubPosts(); };
   }, []);
 
   const handleSaveConfig = async () => {
@@ -1173,47 +1318,22 @@ function AdminView({ churchConfig, setChurchConfig }: { churchConfig: ChurchConf
     }
   };
 
-  const regenerateDailyMessage = async () => {
+  const handleRegenerate = async () => {
     setGeneratingImage(true);
-    try {
-      const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY! });
-      
-      // Generate Message
-      const msgResponse = await ai.models.generateContent({
-        model: "gemini-3-flash-preview",
-        contents: "Gere uma mensagem bíblica curta e inspiradora para o dia de hoje em português, com uma referência bíblica curta. Retorne apenas a mensagem e a referência, sem introduções.",
-      });
-      const text = msgResponse.text || "";
-      const parts = text.split('\n').filter(p => p.trim());
-      const messageText = parts[0]?.replace(/"/g, '') || "O Senhor é o meu pastor, nada me faltará.";
-      const author = parts.length > 1 ? parts[parts.length - 1] : "Salmos 23:1";
+    await regenerateDailyMessage();
+    setGeneratingImage(false);
+  };
 
-      setDailyText(messageText);
-      setDailyAuthor(author);
-
-      // Generate Image
-      const imgResponse = await ai.models.generateContent({
-        model: "gemini-2.5-flash-image",
-        contents: { parts: [{ text: `Uma imagem cristã majestosa e inspiradora, estilo pintura artística ou fotografia cinematográfica, SEM NENHUM TEXTO, SEM LETRAS, SEM PALAVRAS. Foco em paisagens bíblicas, luz divina, ou símbolos sagrados (como um leão majestoso, uma cruz ao pôr do sol, ou montanhas sagradas). Estilo visual: Cores quentes, iluminação dramática, alta resolução. Mensagem: ${messageText}` }] },
-      });
-      
-      if (imgResponse.candidates?.[0]?.content?.parts) {
-        for (const part of imgResponse.candidates[0].content.parts) {
-          if (part.inlineData) {
-            const rawImageUrl = `data:image/png;base64,${part.inlineData.data}`;
-            const resized = await resizeImage(rawImageUrl);
-            setDailyImage(resized);
-            break;
-          }
-        }
-      }
-      alert('Nova mensagem e imagem geradas! Clique em "Publicar Mensagem" para salvar.');
-    } catch (error) {
-      console.error(error);
-      alert('Erro ao regenerar mensagem.');
-    } finally {
-      setGeneratingImage(false);
-    }
+  const handleDailyImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = async (event) => {
+      const base64 = event.target?.result as string;
+      const optimized = await resizeImage(base64, 800, 450);
+      setDailyImage(optimized);
+    };
+    reader.readAsDataURL(file);
   };
 
   const saveEvent = async () => {
@@ -1294,10 +1414,10 @@ function AdminView({ churchConfig, setChurchConfig }: { churchConfig: ChurchConf
           </Card>
           
           <div className="space-y-4">
-            <h3 className="text-xl font-bold">Estatísticas Rápidas</h3>
+            <h3 className="text-xl font-bold">Estatísticas Reais</h3>
             <div className="grid grid-cols-2 gap-4">
-              <Card className="border-emerald-500/20"><p className="text-xs text-zinc-500">Membros</p><p className="text-2xl font-bold">152</p></Card>
-              <Card className="border-blue-500/20"><p className="text-xs text-zinc-500">Posts</p><p className="text-2xl font-bold">482</p></Card>
+              <Card className="border-emerald-500/20"><p className="text-xs text-zinc-500 uppercase tracking-widest">Membros</p><p className="text-2xl font-bold">{memberCount}</p></Card>
+              <Card className="border-blue-500/20"><p className="text-xs text-zinc-500 uppercase tracking-widest">Postagens</p><p className="text-2xl font-bold">{postCount}</p></Card>
             </div>
           </div>
         </div>
@@ -1354,7 +1474,7 @@ function AdminView({ churchConfig, setChurchConfig }: { churchConfig: ChurchConf
         <Card className="space-y-4">
           <div className="flex justify-between items-center">
             <h3 className="text-xl font-bold">Mensagem Diária do Pastor</h3>
-            <Button variant="outline" size="sm" onClick={regenerateDailyMessage} disabled={generatingImage}>
+            <Button variant="outline" size="sm" onClick={handleRegenerate} disabled={generatingImage}>
               {generatingImage ? 'Gerando...' : 'Regenerar Tudo (IA)'}
             </Button>
           </div>
@@ -1373,16 +1493,28 @@ function AdminView({ churchConfig, setChurchConfig }: { churchConfig: ChurchConf
           
           <div className="space-y-2">
             <label className="text-xs text-zinc-500 uppercase font-bold">Imagem da Mensagem</label>
-            <div className="flex gap-2">
+            <div className="flex flex-wrap gap-2">
               <input 
-                placeholder="URL da Imagem ou use a IA ao lado" 
-                className="flex-1 bg-zinc-800 border-zinc-700 rounded-lg px-3 py-2"
+                placeholder="URL da Imagem" 
+                className="flex-1 min-w-[200px] bg-zinc-800 border-zinc-700 rounded-lg px-3 py-2"
                 value={dailyImage}
                 onChange={(e) => setDailyImage(e.target.value)}
               />
-              <Button variant="outline" onClick={generateAIImage} disabled={generatingImage || !dailyText}>
-                {generatingImage ? 'Gerando...' : 'Gerar com IA'}
-              </Button>
+              <div className="flex gap-2">
+                <input 
+                  type="file" 
+                  accept="image/*" 
+                  className="hidden" 
+                  id="daily-image-upload"
+                  onChange={handleDailyImageUpload}
+                />
+                <Button variant="outline" onClick={() => document.getElementById('daily-image-upload')?.click()}>
+                  <Plus className="w-4 h-4" /> Galeria
+                </Button>
+                <Button variant="outline" onClick={generateAIImage} disabled={generatingImage || !dailyText}>
+                  {generatingImage ? 'Gerando...' : 'Gerar com IA'}
+                </Button>
+              </div>
             </div>
             {dailyImage && (
               <div className="mt-4 rounded-xl overflow-hidden border border-zinc-800 aspect-video">
@@ -1835,7 +1967,7 @@ function CommunityView({ profile }: { profile: UserProfile | null }) {
   );
 }
 
-function EventsView({ profile }: { profile: UserProfile | null }) {
+function EventsView({ profile, reminders }: { profile: UserProfile | null, reminders: string[] }) {
   const [events, setEvents] = useState<ChurchEvent[]>([]);
   const [registrations, setRegistrations] = useState<string[]>([]);
 
@@ -1855,6 +1987,18 @@ function EventsView({ profile }: { profile: UserProfile | null }) {
 
     return () => unsubscribe();
   }, [profile]);
+
+  const toggleReminder = async (eventId: string) => {
+    if (!profile) return;
+    const isReminded = reminders.includes(eventId);
+    const reminderRef = doc(db, `users/${profile.uid}/reminders`, eventId);
+    
+    if (isReminded) {
+      await deleteDoc(reminderRef);
+    } else {
+      await setDoc(reminderRef, { createdAt: serverTimestamp() });
+    }
+  };
 
   const togglePresence = async (eventId: string) => {
     if (!profile) return;
@@ -1903,12 +2047,25 @@ function EventsView({ profile }: { profile: UserProfile | null }) {
                   </p>
                   <p className="flex items-center gap-2"><MapPin className="w-4 h-4 text-[#D4AF37]" /> {event.location}</p>
                 </div>
-                <Button 
-                  className={cn("w-full mt-6", isRegistered && "bg-emerald-600 hover:bg-emerald-700")}
-                  onClick={() => togglePresence(event.id)}
-                >
-                  {isRegistered ? 'Presença Confirmada' : 'Confirmar Presença'}
-                </Button>
+                <div className="grid grid-cols-2 gap-3 mt-6">
+                  <Button 
+                    variant="outline"
+                    className={cn(
+                      "gap-2",
+                      reminders.includes(event.id) ? "bg-[#D4AF37]/10 text-[#D4AF37] border-[#D4AF37]" : "text-zinc-400 border-zinc-800"
+                    )}
+                    onClick={() => toggleReminder(event.id)}
+                  >
+                    {reminders.includes(event.id) ? <Bell className="w-4 h-4" /> : <BellOff className="w-4 h-4" />}
+                    {reminders.includes(event.id) ? 'Lembrando' : 'Lembrar'}
+                  </Button>
+                  <Button 
+                    className={cn(isRegistered && "bg-emerald-600 hover:bg-emerald-700")}
+                    onClick={() => togglePresence(event.id)}
+                  >
+                    {isRegistered ? 'Confirmado' : 'Presença'}
+                  </Button>
+                </div>
               </div>
             </Card>
           );
@@ -1924,32 +2081,52 @@ function EventsView({ profile }: { profile: UserProfile | null }) {
 }
 
 function LiveView({ churchConfig }: { churchConfig: ChurchConfig | null }) {
+  const getYoutubeEmbedUrl = (url: string) => {
+    if (!url) return null;
+    const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|\&v=)([^#\&\?]*).*/;
+    const match = url.match(regExp);
+    return (match && match[2].length === 11) ? `https://www.youtube.com/embed/${match[2]}` : null;
+  };
+
+  const embedUrl = getYoutubeEmbedUrl(churchConfig?.liveStreamUrl || '');
+
   return (
     <div className="space-y-8">
       <h1 className="text-3xl font-bold">Cultos Online</h1>
       
-      <div className="aspect-video bg-zinc-900 rounded-3xl border border-zinc-800 flex items-center justify-center relative overflow-hidden group">
-        <img src="https://picsum.photos/seed/live/1280/720" alt="" className="absolute inset-0 w-full h-full object-cover opacity-50" referrerPolicy="no-referrer" />
-        <div className="absolute inset-0 bg-gradient-to-t from-black to-transparent" />
-        <div className="relative z-10 text-center">
-          <div 
-            className="w-20 h-20 bg-[#D4AF37] rounded-full flex items-center justify-center mx-auto mb-4 cursor-pointer hover:scale-110 transition-transform shadow-[0_0_30px_rgba(212,175,55,0.4)]"
-            onClick={() => {
-              if (churchConfig?.liveStreamUrl) {
-                window.open(churchConfig.liveStreamUrl, '_blank');
-              } else {
-                alert('Nenhum culto ao vivo no momento. Verifique os horários dos eventos.');
-              }
-            }}
-          >
-            <Play className="text-black w-8 h-8 fill-current" />
-          </div>
-          <h2 className="text-2xl font-bold">Culto de Domingo - Ao Vivo</h2>
-          <p className="text-red-500 font-bold flex items-center justify-center gap-2 mt-2">
-            <span className="w-2 h-2 bg-red-500 rounded-full animate-ping" /> AO VIVO AGORA
-          </p>
+      {embedUrl ? (
+        <div className="aspect-video bg-black rounded-3xl overflow-hidden border border-zinc-800 shadow-2xl">
+          <iframe 
+            src={embedUrl} 
+            className="w-full h-full" 
+            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" 
+            allowFullScreen 
+          />
         </div>
-      </div>
+      ) : (
+        <div className="aspect-video bg-zinc-900 rounded-3xl border border-zinc-800 flex items-center justify-center relative overflow-hidden group">
+          <img src="https://picsum.photos/seed/live/1280/720" alt="" className="absolute inset-0 w-full h-full object-cover opacity-50" referrerPolicy="no-referrer" />
+          <div className="absolute inset-0 bg-gradient-to-t from-black to-transparent" />
+          <div className="relative z-10 text-center">
+            <div 
+              className="w-20 h-20 bg-[#D4AF37] rounded-full flex items-center justify-center mx-auto mb-4 cursor-pointer hover:scale-110 transition-transform shadow-[0_0_30px_rgba(212,175,55,0.4)]"
+              onClick={() => {
+                if (churchConfig?.liveStreamUrl) {
+                  window.open(churchConfig.liveStreamUrl, '_blank');
+                } else {
+                  alert('Nenhum culto ao vivo no momento. Verifique os horários dos eventos.');
+                }
+              }}
+            >
+              <Play className="text-black w-8 h-8 fill-current" />
+            </div>
+            <h2 className="text-2xl font-bold">Culto de Domingo - Ao Vivo</h2>
+            <p className="text-red-500 font-bold flex items-center justify-center gap-2 mt-2">
+              <span className="w-2 h-2 bg-red-500 rounded-full animate-ping" /> AO VIVO AGORA
+            </p>
+          </div>
+        </div>
+      )}
 
       <section>
         <h3 className="text-xl font-bold mb-4">Mensagens Recentes</h3>
