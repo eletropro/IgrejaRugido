@@ -15,6 +15,15 @@ import { onAuthStateChanged, User as FirebaseUser } from 'firebase/auth';
 import { db, auth, signInWithGoogle, logout, signUpWithEmail, loginWithEmail } from './firebase';
 import { UserProfile, Post, ChurchEvent, PrayerRequest, ChurchConfig, DiscipleshipLesson } from './types';
 
+declare global {
+  interface Window {
+    aistudio: {
+      hasSelectedApiKey: () => Promise<boolean>;
+      openSelectKey: () => Promise<void>;
+    };
+  }
+}
+
 // --- Icons ---
 
 const Lion = ({ className }: { className?: string }) => (
@@ -181,6 +190,46 @@ const Card = ({ children, className, onClick }: { children: React.ReactNode; cla
     {children}
   </div>
 );
+
+// --- AI Key Helper ---
+
+function ApiKeyBanner() {
+  const [hasKey, setHasKey] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    const checkKey = async () => {
+      if (window.aistudio) {
+        const selected = await window.aistudio.hasSelectedApiKey();
+        setHasKey(selected);
+      } else {
+        setHasKey(true); // Fallback for local dev if window.aistudio is missing
+      }
+    };
+    checkKey();
+  }, []);
+
+  if (hasKey === true) return null;
+
+  return (
+    <div className="bg-[#D4AF37]/10 border border-[#D4AF37]/20 p-4 rounded-2xl mb-6 flex flex-col md:flex-row items-center justify-between gap-4">
+      <div className="flex items-center gap-3">
+        <div className="w-10 h-10 bg-[#D4AF37]/20 rounded-full flex items-center justify-center text-[#D4AF37]">
+          <Lock className="w-5 h-5" />
+        </div>
+        <div>
+          <p className="font-bold text-sm">Configuração de IA Necessária</p>
+          <p className="text-xs text-zinc-400">Para usar as funções de geração de texto e imagem online, você precisa configurar sua chave API.</p>
+        </div>
+      </div>
+      <Button 
+        onClick={() => window.aistudio?.openSelectKey()}
+        className="bg-[#D4AF37] text-black hover:bg-[#D4AF37]/90 font-bold whitespace-nowrap"
+      >
+        Configurar Chave API
+      </Button>
+    </div>
+  );
+}
 
 // --- Main App ---
 
@@ -1321,7 +1370,8 @@ function AdminView({ churchConfig, setChurchConfig, regenerateDailyMessage }: {
     setGeneratingImage(true);
     try {
       console.log("Generating AI image for text:", dailyText);
-      const genAI = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY! });
+      const apiKey = process.env.GEMINI_API_KEY || '';
+      const genAI = new GoogleGenAI({ apiKey });
       const response = await genAI.models.generateContent({
         model: 'gemini-2.5-flash-image',
         contents: [{ text: `Uma imagem cristã majestosa e inspiradora, estilo pintura artística ou fotografia cinematográfica, SEM NENHUM TEXTO, SEM LETRAS, SEM PALAVRAS. Foco em paisagens bíblicas, luz divina, ou símbolos sagrados (como um leão majestoso, uma cruz ao pôr do sol, ou montanhas sagradas). Estilo visual: Cores quentes, iluminação dramática, alta resolução. Tema: ${dailyText}` }],
@@ -1332,13 +1382,18 @@ function AdminView({ churchConfig, setChurchConfig, regenerateDailyMessage }: {
       for (const part of response.candidates[0].content.parts) {
         if (part.inlineData) {
           const rawImageUrl = `data:image/png;base64,${part.inlineData.data}`;
-          const resized = await resizeImage(rawImageUrl);
+          const resized = await resizeImage(rawImageUrl, 800, 450);
           setDailyImage(resized);
+          break;
         }
       }
-    } catch (error) {
-      console.error(error);
-      alert('Erro ao gerar imagem.');
+    } catch (error: any) {
+      console.error("AI Error in generateAIImage:", error);
+      if (error.message?.includes("Requested entity was not found")) {
+        alert("Configuração de IA inválida. Por favor, configure sua chave API no topo da página.");
+      } else {
+        alert("Erro ao gerar imagem. Verifique sua chave API.");
+      }
     } finally {
       setGeneratingImage(false);
     }
@@ -1396,6 +1451,7 @@ function AdminView({ churchConfig, setChurchConfig, regenerateDailyMessage }: {
 
   return (
     <div className="space-y-8">
+      <ApiKeyBanner />
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <h1 className="text-3xl font-bold">Painel Administrativo</h1>
         <div className="flex bg-zinc-900 p-1 rounded-xl border border-zinc-800 overflow-x-auto no-scrollbar">
@@ -1611,7 +1667,10 @@ function AIBibleView() {
 
     try {
       console.log("Initializing AI with model: gemini-3-flash-preview");
-      const genAI = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY! });
+      // Use the key from process.env which is injected by the platform or the key dialog
+      const apiKey = process.env.GEMINI_API_KEY || '';
+      const genAI = new GoogleGenAI({ apiKey });
+      
       const response = await genAI.models.generateContent({
         model: "gemini-3-flash-preview",
         contents: [{ role: 'user', parts: [{ text: userMsg }] }],
@@ -1621,9 +1680,13 @@ function AIBibleView() {
       });
       console.log("AI Response received");
       setMessages(prev => [...prev, { role: 'ai', content: response.text || 'Desculpe, não consegui processar sua dúvida agora.' }]);
-    } catch (error) {
+    } catch (error: any) {
       console.error("AI Error in AIBibleView:", error);
-      setMessages(prev => [...prev, { role: 'ai', content: 'Erro ao conectar com o Conselheiro Profético. Por favor, tente novamente em instantes.' }]);
+      if (error.message?.includes("Requested entity was not found")) {
+        setMessages(prev => [...prev, { role: 'ai', content: 'Configuração de IA inválida. Por favor, clique no botão de configurar chave API no topo da página.' }]);
+      } else {
+        setMessages(prev => [...prev, { role: 'ai', content: 'Erro ao conectar com o Conselheiro Profético. Verifique se sua chave API está configurada corretamente.' }]);
+      }
     } finally {
       setLoading(false);
     }
@@ -1631,6 +1694,7 @@ function AIBibleView() {
 
   return (
     <div className="h-[calc(100vh-12rem)] flex flex-col">
+      <ApiKeyBanner />
       <div className="mb-6">
         <h1 className="text-3xl font-bold">Conselheiro Profético</h1>
         <p className="text-zinc-500">IA Bíblica para tirar suas dúvidas e aconselhamento.</p>
@@ -1700,7 +1764,8 @@ function SermonGenView() {
     setLoading(true);
     try {
       console.log("Generating sermon for topic:", topic);
-      const genAI = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY! });
+      const apiKey = process.env.GEMINI_API_KEY || '';
+      const genAI = new GoogleGenAI({ apiKey });
       const response = await genAI.models.generateContent({
         model: "gemini-3-flash-preview",
         contents: [{ role: 'user', parts: [{ text: `Gere um esboço de sermão sobre o tema: ${topic}` }] }],
@@ -1710,9 +1775,13 @@ function SermonGenView() {
       });
       console.log("Sermon generated successfully");
       setSermon(response.text || '');
-    } catch (error) {
+    } catch (error: any) {
       console.error("AI Error in SermonGenView:", error);
-      alert("Erro ao gerar sermão. Verifique sua conexão ou tente novamente mais tarde.");
+      if (error.message?.includes("Requested entity was not found")) {
+        alert("Configuração de IA inválida. Por favor, configure sua chave API.");
+      } else {
+        alert("Erro ao gerar sermão. Verifique sua chave API ou tente novamente mais tarde.");
+      }
     } finally {
       setLoading(false);
     }
@@ -1720,6 +1789,7 @@ function SermonGenView() {
 
   return (
     <div className="space-y-6">
+      <ApiKeyBanner />
       <h1 className="text-3xl font-bold">Gerador de Sermões</h1>
       <p className="text-zinc-500">Ferramenta auxiliar para pastores e líderes criarem esboços de mensagens.</p>
 
