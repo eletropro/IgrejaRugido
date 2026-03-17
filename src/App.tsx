@@ -195,6 +195,7 @@ export default function App() {
   const [showInstallBanner, setShowInstallBanner] = useState(false);
   const [reminders, setReminders] = useState<string[]>([]);
   const [activeNotification, setActiveNotification] = useState<{title: string, message: string} | null>(null);
+  const notifiedEventsRef = useRef<Set<string>>(new Set());
 
   useEffect(() => {
     if (!user) return;
@@ -211,26 +212,36 @@ export default function App() {
       
       const now = new Date();
       
-      const q = query(collection(db, 'events'), where('__name__', 'in', reminders));
-      const snap = await getDocs(q);
+      // Handle large number of reminders by chunking if necessary, but 30 is usually enough
+      const remindersToQuery = reminders.slice(0, 30);
+      const q = query(collection(db, 'events'), where('__name__', 'in', remindersToQuery));
       
-      snap.docs.forEach(doc => {
-        const event = doc.data() as ChurchEvent;
-        const eventDate = new Date(event.date);
+      try {
+        const snap = await getDocs(q);
         
-        // Check if event is exactly 1 hour away (within a 1-minute window)
-        const diffMinutes = Math.floor((eventDate.getTime() - now.getTime()) / (1000 * 60));
-        
-        if (diffMinutes === 60) {
-          setActiveNotification({
-            title: "Lembrete de Culto",
-            message: `O evento "${event.title}" começará em 1 hora!`
-          });
-        }
-      });
+        snap.docs.forEach(doc => {
+          const event = doc.data() as ChurchEvent;
+          if (!event.date) return;
+          
+          const eventDate = new Date(event.date);
+          const diffMinutes = Math.floor((eventDate.getTime() - now.getTime()) / (1000 * 60));
+          
+          // Check if event is roughly 1 hour away and not yet notified
+          if (diffMinutes >= 55 && diffMinutes <= 65 && !notifiedEventsRef.current.has(doc.id)) {
+            setActiveNotification({
+              title: "Lembrete de Culto",
+              message: `O evento "${event.title}" começará em aproximadamente 1 hora!`
+            });
+            notifiedEventsRef.current.add(doc.id);
+          }
+        });
+      } catch (err) {
+        console.error("Error checking reminders:", err);
+      }
     };
 
     const interval = setInterval(checkReminders, 60000); // Check every minute
+    checkReminders(); // Initial check
     return () => clearInterval(interval);
   }, [user, reminders]);
 
@@ -336,19 +347,32 @@ export default function App() {
   const regenerateDailyMessage = async () => {
     if (!churchConfig) return;
     try {
-      const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY! });
+      const apiKey = process.env.GEMINI_API_KEY;
+      if (!apiKey) {
+        console.error("GEMINI_API_KEY is not set");
+        return;
+      }
+      const ai = new GoogleGenAI({ apiKey });
       
       // Generate Message
-      const msgResponse = await ai.models.generateContent({
-        model: "gemini-3.1-pro-preview",
-        contents: "Gere uma mensagem bíblica curta e inspiradora para o dia de hoje em português, com uma referência bíblica curta. Retorne apenas a mensagem e a referência, sem introduções.",
-      });
-      const text = msgResponse.text || "";
-      
-      const parts = text.split('\n').filter(p => p.trim());
-      const messageText = parts[0]?.replace(/"/g, '') || "O Senhor é o meu pastor, nada me faltará.";
-      const author = parts.length > 1 ? parts[parts.length - 1] : "Salmos 23:1";
+      let messageText = "O Senhor é o meu pastor, nada me faltará.";
+      let author = "Salmos 23:1";
 
+      try {
+        const msgResponse = await ai.models.generateContent({
+          model: "gemini-3.1-pro-preview",
+          contents: "Gere uma mensagem bíblica curta e inspiradora para o dia de hoje em português, com uma referência bíblica curta. Retorne apenas a mensagem e a referência, sem introduções.",
+        });
+        const text = msgResponse.text || "";
+        const parts = text.split('\n').filter(p => p.trim());
+        if (parts.length > 0) {
+          messageText = parts[0].replace(/"/g, '');
+          author = parts.length > 1 ? parts[parts.length - 1] : "Bíblia Sagrada";
+        }
+      } catch (msgError) {
+        console.error("Message generation failed:", msgError);
+      }
+      
       // Generate Image
       let imageUrl = churchConfig.dailyMessage?.imageUrl || "https://picsum.photos/seed/daily/800/400";
       try {
@@ -1296,6 +1320,7 @@ function AdminView({ churchConfig, setChurchConfig, regenerateDailyMessage }: {
     if (!dailyText) return;
     setGeneratingImage(true);
     try {
+      console.log("Generating AI image for text:", dailyText);
       const genAI = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY! });
       const response = await genAI.models.generateContent({
         model: 'gemini-2.5-flash-image',
@@ -1303,6 +1328,7 @@ function AdminView({ churchConfig, setChurchConfig, regenerateDailyMessage }: {
         config: { imageConfig: { aspectRatio: "16:9" } }
       });
       
+      console.log("AI Image response received");
       for (const part of response.candidates[0].content.parts) {
         if (part.inlineData) {
           const rawImageUrl = `data:image/png;base64,${part.inlineData.data}`;
@@ -1584,6 +1610,7 @@ function AIBibleView() {
     setLoading(true);
 
     try {
+      console.log("Initializing AI with model: gemini-3-flash-preview");
       const genAI = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY! });
       const response = await genAI.models.generateContent({
         model: "gemini-3-flash-preview",
@@ -1592,10 +1619,11 @@ function AIBibleView() {
           systemInstruction: "Você é o 'Conselheiro Profético', uma IA bíblica avançada da Igreja Profética Rugido. Sua missão é responder perguntas bíblicas, explicar versículos, sugerir leituras e oferecer aconselhamento espiritual básico sempre baseado na Bíblia Sagrada. Seja acolhedor, sábio e use uma linguagem cristã respeitosa."
         }
       });
+      console.log("AI Response received");
       setMessages(prev => [...prev, { role: 'ai', content: response.text || 'Desculpe, não consegui processar sua dúvida agora.' }]);
     } catch (error) {
-      console.error(error);
-      setMessages(prev => [...prev, { role: 'ai', content: 'Erro ao conectar com o Conselheiro Profético.' }]);
+      console.error("AI Error in AIBibleView:", error);
+      setMessages(prev => [...prev, { role: 'ai', content: 'Erro ao conectar com o Conselheiro Profético. Por favor, tente novamente em instantes.' }]);
     } finally {
       setLoading(false);
     }
@@ -1671,6 +1699,7 @@ function SermonGenView() {
     if (!topic.trim()) return;
     setLoading(true);
     try {
+      console.log("Generating sermon for topic:", topic);
       const genAI = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY! });
       const response = await genAI.models.generateContent({
         model: "gemini-3-flash-preview",
@@ -1679,9 +1708,11 @@ function SermonGenView() {
           systemInstruction: "Você é um assistente homilético para pastores da Igreja Profética Rugido. Sua tarefa é gerar esboços de sermões completos, incluindo introdução, pontos principais com versículos de apoio, aplicações práticas e conclusão. O tom deve ser inspirador e teologicamente sólido."
         }
       });
+      console.log("Sermon generated successfully");
       setSermon(response.text || '');
     } catch (error) {
-      console.error(error);
+      console.error("AI Error in SermonGenView:", error);
+      alert("Erro ao gerar sermão. Verifique sua conexão ou tente novamente mais tarde.");
     } finally {
       setLoading(false);
     }
